@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>All Students</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body style="background: linear-gradient(135deg, #eef2ff, #f8fafc);">
+
+<nav class="navbar navbar-light bg-white shadow-sm mb-4">
+    <div class="container d-flex justify-content-between">
+
+        <!-- LEFT -->
+        <span class="fw-bold">Placement Portal</span>
+
+        <!-- RIGHT -->
+        <div class="d-flex align-items-center">
+
+            <a href="/admin" class="btn btn-outline-dark btn-sm me-2">
+                Dashboard
+            </a>
+
+            <a href="/logout" class="btn btn-danger btn-sm">
+                Logout
+            </a>
+
+        </div>
+
+    </div>
+</nav>
+
+<div class="container">
+
+<h2 class="fw-bold mb-4">All Students</h2>
+
+<div class="row">
+{% for s in students %}
+<div class="col-md-6">
+
+    <div class="card p-4 mb-4 shadow-sm d-flex flex-row align-items-center justify-content-between">
+
+        <!-- LEFT: Avatar + Info -->
+        <div class="d-flex align-items-center">
+
+            <!-- Avatar -->
+            <div class="avatar-circle me-3"
+                style="background-color: hsl({{ (s.id * 57) % 360 }}, 70%, 50%)">
+                {{ s.name[0] | upper }}
+            </div>
+
+            <!-- Info -->
+            <div>
+                <h6 class="mb-1 fw-semibold">{{ s.name }}</h6>
+                <small class="text-muted">{{ s.email }}</small>
+            </div>
+
+        </div>
+
+        <!-- RIGHT: Action -->
+        <div>
+            <a href="/delete_user/{{ s.id }}" class="btn btn-danger btn-sm">
+                Delete
+            </a>
+        </div>
+
+    </div>
+
+</div>
+{% endfor %}
+</div>
+
+{% if students|length == 0 %}
+<p class="text-muted text-center mt-5">No students found 🚫</p>
+{% endif %}
+
+</div>
+
+</body>
+</html>

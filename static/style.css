@@ -44,6 +44,10 @@ body {
     transform: translateY(-1px);
 }
 
+.btn-success {
+    transition: all 0.2s ease;
+}
+
 .btn-success:hover {
     box-shadow: 0 5px 15px rgba(34,197,94,0.4);
 }

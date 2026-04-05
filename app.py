@@ -51,7 +51,7 @@ class Application(db.Model):
 with app.app_context():
     db.create_all()
 
-    admin = User.query.filter_by(role="admin").first()
+    admin = User.query.filter_by(email="admin@gmail.com").first()
     if not admin:
         admin = User(
             name="Admin",
@@ -62,18 +62,28 @@ with app.app_context():
         )
         db.session.add(admin)
         db.session.commit()
+    else:
+        admin.role = "admin"
+        admin.status = "active"
+        db.session.commit()
 
 
 # ------------------ AUTH ------------------
 
 @app.route("/", methods=["GET", "POST"])
 def login():
+    if "user_id" in session:
+        role = session["role"]
+        if role == "admin":
+            return redirect("/admin")
+        elif role == "company":
+            return redirect("/company")
+        else:
+            return redirect("/student")
+
     if request.method == "POST":
         email = request.form["email"]
         password = request.form["password"]
-
-        if not email or not password:
-            return render_template("login.html", error="Enter email and password")
 
         user = User.query.filter_by(email=email, password=password).first()
 
@@ -87,10 +97,10 @@ def login():
                 return redirect("/company")
             else:
                 return redirect("/student")
-        else:
-            return render_template("login.html", error="Invalid credentials or not approved")
 
-    return render_template("login.html")
+        return render_template("auth/login.html", error="Invalid credentials")
+
+    return render_template("auth/login.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -101,76 +111,68 @@ def register():
         password = request.form["password"]
         role = request.form["role"]
 
-        if not name or not email or not password:
-            return render_template("register.html", error="All fields required")
+        if User.query.filter_by(email=email).first():
+            return render_template("auth/register.html", error="Email exists")
 
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            return render_template("register.html", error="Email already exists")
-
-        try:
-            user = User(name=name, email=email, password=password, role=role)
-
-            if role == "student":
-                user.status = "active"
-
-            db.session.add(user)
-            db.session.flush()
-
-            if role == "company":
-                company = Company(
-                    user_id=user.id,
-                    company_name=name,
-                    hr_contact="",
-                    website=""
-                )
-                db.session.add(company)
-
-            db.session.commit()
+        if role not in ["student", "company"]:
             return redirect("/")
 
-        except Exception as e:
-            print(e)
-            return render_template("register.html", error="Something went wrong")
+        user = User(name=name, email=email, password=password, role=role)
 
-    return render_template("register.html")
+        if role == "student":
+            user.status = "active"
+
+        db.session.add(user)
+        db.session.flush()
+
+        if role == "company":
+            db.session.add(Company(user_id=user.id, company_name=name))
+
+        db.session.commit()
+        return redirect("/")
+
+    return render_template("auth/register.html")
 
 
 # ------------------ ADMIN ------------------
 
-@app.route("/admin", methods=["GET", "POST"])
+@app.route("/admin")
 def admin_dashboard():
-    if "user_id" not in session or session["role"] != "admin":
+    if session.get("role") != "admin":
         return redirect("/")
+    return render_template("admin/admin_dashboard.html")
 
-    search = request.form.get("search")
 
-    if search:
-        users = User.query.filter(User.name.contains(search)).all()
-    else:
-        users = User.query.all()
-
+@app.route("/admin/companies")
+def all_companies():
+    if session.get("role") != "admin":
+        return redirect("/")
     companies = Company.query.all()
-    drives = Drive.query.all()
-
-    return render_template(
-        "admin_dashboard.html",
-        companies=companies,
-        drives=drives,
-        users=users
-    )
+    return render_template("admin/all_company.html", companies=companies)
 
 
-@app.route("/delete_user/<int:id>")
-def delete_user(id):
-    if "user_id" not in session or session["role"] != "admin":
+@app.route("/admin/students")
+def all_students():
+    if session.get("role") != "admin":
         return redirect("/")
+    students = User.query.filter_by(role="student").all()
+    return render_template("admin/all_student.html", students=students)
 
-    user = User.query.get(id)
-    db.session.delete(user)
-    db.session.commit()
 
-    return redirect("/admin")
+@app.route("/admin/drives")
+def all_drives():
+    if session.get("role") != "admin":
+        return redirect("/")
+    drives = Drive.query.all()
+    return render_template("admin/all_drives.html", drives=drives)
+
+
+@app.route("/admin/applications")
+def all_applications():
+    if session.get("role") != "admin":
+        return redirect("/")
+    applications = Application.query.all()
+    return render_template("admin/all_application.html", applications=applications)
 
 
 @app.route("/approve_company/<int:id>")
@@ -182,7 +184,7 @@ def approve_company(id):
     user.status = "active"
 
     db.session.commit()
-    return redirect("/admin")
+    return redirect("/admin/companies")
 
 
 @app.route("/approve_drive/<int:id>")
@@ -190,23 +192,37 @@ def approve_drive(id):
     drive = Drive.query.get(id)
     drive.status = "approved"
     db.session.commit()
-    return redirect("/admin")
+    return redirect("/admin/drives")
+
+
+@app.route("/delete_user/<int:id>")
+def delete_user(id):
+    user = User.query.get(id)
+    db.session.delete(user)
+    db.session.commit()
+    return redirect("/admin/students")
 
 
 # ------------------ COMPANY ------------------
 
 @app.route("/company")
 def company_dashboard():
-    if "user_id" not in session or session["role"] != "company":
+    if session.get("role") != "company":
         return redirect("/")
+    return render_template("company/company_dashboard.html")
 
+
+@app.route("/company/drives")
+def company_drives():
+    if session.get("role") != "company":
+        return redirect("/")
     drives = Drive.query.filter_by(company_id=session["user_id"]).all()
-    return render_template("company_dashboard.html", drives=drives)
+    return render_template("company/view_drives.html", drives=drives)
 
 
-@app.route("/create_drive", methods=["GET", "POST"])
+@app.route("/company/create", methods=["GET", "POST"])
 def create_drive():
-    if "user_id" not in session or session["role"] != "company":
+    if session.get("role") != "company":
         return redirect("/")
 
     if request.method == "POST":
@@ -219,74 +235,117 @@ def create_drive():
         )
         db.session.add(drive)
         db.session.commit()
-        return redirect("/company")
+        return redirect("/company/drives")
 
-    return render_template("create_drive.html")
+    return render_template("company/add_new_drives.html")
 
 
-@app.route("/view_applications/<int:drive_id>")
+@app.route("/company/applications/<int:drive_id>")
 def view_applications(drive_id):
-    if "user_id" not in session or session["role"] != "company":
+    if session.get("role") != "company":
+        return redirect("/")
+    applications = Application.query.filter_by(drive_id=drive_id).all()
+    return render_template("company/all_applications.html", applications=applications)
+
+
+@app.route("/company/profile", methods=["GET", "POST"])
+def edit_profile():
+    if session.get("role") != "company":
         return redirect("/")
 
-    applications = Application.query.filter_by(drive_id=drive_id).all()
-    return render_template("view_applications.html", applications=applications)
+    company = Company.query.filter_by(user_id=session["user_id"]).first()
 
+    if request.method == "POST":
+        company.company_name = request.form["company_name"]
+        company.hr_contact = request.form["hr_contact"]
+        company.website = request.form["website"]
+        db.session.commit()
+        return redirect("/company")
+
+    return render_template("company/edit_profile.html", company=company)
 
 @app.route("/update_status/<int:app_id>/<status>")
 def update_status(app_id, status):
-    if "user_id" not in session or session["role"] != "company":
+    if session.get("role") != "company":
         return redirect("/")
 
     application = Application.query.get(app_id)
-    application.status = status
-    db.session.commit()
 
-    return redirect(request.referrer)
+    if not application:
+        return redirect("/company")
+
+    # update status
+    if status in ["shortlisted", "selected", "rejected"]:
+        application.status = status
+        db.session.commit()
+
+    # redirect back to same drive applications page
+    return redirect(f"/company/applications/{application.drive_id}")
 
 
 # ------------------ STUDENT ------------------
 
 @app.route("/student")
 def student_dashboard():
-    if "user_id" not in session or session["role"] != "student":
+    if session.get("role") != "student":
+        return redirect("/")
+
+    user = User.query.get(session["user_id"])
+
+    return render_template(
+        "student/student_dashboard.html",
+        user=user
+    )
+
+
+@app.route("/student/explore")
+def explore_drives():
+    if session.get("role") != "student":
         return redirect("/")
 
     user = User.query.get(session["user_id"])
     drives = Drive.query.filter_by(status="approved").all()
 
-    return render_template("student_dashboard.html", drives=drives, user=user)
+    applied = Application.query.filter_by(student_id=user.id).all()
+    applied_ids = [a.drive_id for a in applied]
 
+    return render_template(
+        "student/explore_drives.html",
+        drives=drives,
+        applied_ids=applied_ids
+    )
+
+
+@app.route("/student/apply/<int:drive_id>")
+def apply_page(drive_id):
+    if session.get("role") != "student":
+        return redirect("/")
+    drive = Drive.query.get(drive_id)
+    return render_template("student/apply_drives.html", drive=drive)
 
 
 @app.route("/apply/<int:drive_id>")
 def apply(drive_id):
-    if "user_id" not in session or session["role"] != "student":
+    if session.get("role") != "student":
         return redirect("/")
 
-    # check duplicate
-    existing = Application.query.filter_by(
+    if Application.query.filter_by(
+        student_id=session["user_id"], drive_id=drive_id
+    ).first():
+        return redirect("/student")
+
+    db.session.add(Application(
         student_id=session["user_id"],
         drive_id=drive_id
-    ).first()
-
-    if existing:
-        return redirect("/student")  # already applied
-
-    app_entry = Application(
-        student_id=session["user_id"],
-        drive_id=drive_id
-    )
-    db.session.add(app_entry)
+    ))
     db.session.commit()
 
     return redirect("/student")
 
 
-
 @app.route("/my_applications")
 def my_applications():
-    if "user_id" not in session or session["role"] != "student":
+    if session.get("role") != "student":
         return redirect("/")
 
     applications = Application.query.filter_by(student_id=session["user_id"]).all()
@@ -302,14 +361,38 @@ def my_applications():
             "status": app.status
         })
 
-    return render_template("my_applications.html", applications=data)
+    return render_template("student/your_application.html", applications=data)
 
 
+@app.route("/student/profile", methods=["GET", "POST"])
+def student_profile():
+    if session.get("role") != "student":
+        return redirect("/")
+
+    user = User.query.get(session["user_id"])
+
+    if request.method == "POST":
+        user.name = request.form["name"]
+        user.email = request.form["email"]
+        db.session.commit()
+        return redirect("/student")
+
+    return render_template("student/edit_profile.html", user=user)
+
+
+# ------------------ LOGOUT ------------------
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
+
+
+@app.before_request
+def clear_session_on_restart():
+    if not hasattr(app, "session_cleared"):
+        session.clear()
+        app.session_cleared = True
 
 
 # ------------------ RUN ------------------
